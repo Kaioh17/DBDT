@@ -1,4 +1,4 @@
-# Linke to data set https://www.kaggle.com/datasets/mlg-ulb/creditcardfraud
+# Link to data set https://www.kaggle.com/datasets/mlg-ulb/creditcardfraud
 
 
 # Install dependencies as needed:
