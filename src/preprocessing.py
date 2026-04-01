@@ -48,7 +48,14 @@ def test_train_split(X, y, test_size=0.25, random_state=42):
     X_test[['Amount', 'Time']] = scaler.transform(X_test[['Amount', 'Time']])  
     
     return X_train, X_test, y_train, y_test
+def train_valid_split(X_train, y_train, test_size=0.25, random_state=42):
+    """Validation split form training
+       
+      return: X_train, X_valid, y_train, y_valid"""
 
+    X_train, X_valid, y_train, y_valid = train_test_split(X_train, y_train, test_size=test_size, stratify=y_train, random_state=random_state) # stratify argument to maintain similar data distribution due to imbalance
+     
+    return X_train, X_valid, y_train, y_valid
 def interquatile_range(X_train, y_train):
   """ 
   IQR outlier detection and removal on training set only 
