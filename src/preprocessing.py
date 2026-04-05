@@ -11,7 +11,7 @@ from sklearn.manifold import TSNE
 from imblearn.over_sampling import SMOTE
 # matplot lib
 import matplotlib.pyplot as plt
-
+import torch 
 # Set the path to the file you'd like to load
 file_path = "creditcard.csv"
 
@@ -118,3 +118,11 @@ def plot_tsne(X, y, title="t-SNE Visualization", sample_size=5000, random_state=
     plt.grid(True)
     plt.tight_layout()
     plt.show()
+    
+def torch_cast(X_train, X_test, y_train, y_test): 
+    X_train_t = torch.tensor(X_train.values, dtype=torch.float32) # .values because it's a DataFrame
+    X_test_t = torch.tensor(X_test.values, dtype=torch.float32)
+    y_train_t = torch.tensor(y_train, dtype=torch.float32)
+    y_test_t = torch.tensor(y_test, dtype=torch.float32)
+    
+    return X_train_t, X_test_t, y_train_t, y_test_t
