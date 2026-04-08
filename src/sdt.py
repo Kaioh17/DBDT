@@ -1,4 +1,3 @@
-from tensorflow import keras
 import numpy as np
 import torch
 import torch.nn as nn 
@@ -43,33 +42,44 @@ class SDT(nn.Module):
         
         # all innser node aoutputs
         node_probs = [node(x) for node in self.inner_nodes]
-        
+        node_outputs = torch.stack([p.squeeze(1) for p in node_probs], dim=1)
         #computig path probability for each leaf
-        
-        path_probs = torch.ones(batch_size, self.num_leaves)
-        
+        reach = [torch.zeros(batch_size, device=x.device, dtype=x.dtype) for _ in range(self.num_inner_nodes)]
+        reach[0] = torch.ones(batch_size, device=x.device, dtype=x.dtype)
+        for i in range(self.num_inner_nodes):
+            p = node_probs[i].squeeze(1)
+            mass = reach[i]
+            # Heap indexing: children of node i are 2i+1 (left) and 2i+2 (right).
+            li, ri = 2 * i + 1, 2 * i + 2
+            if li < self.num_inner_nodes:
+                reach[li] = mass * (1.0 - p)
+            if ri < self.num_inner_nodes:
+                reach[ri] = mass * p
+        node_reach = torch.stack(reach, dim=1)
+ 
+        leaf_cols = []
         for leaf_idx in range(self.num_leaves):
-            node_idx = 0 # so we start root
+            col = torch.ones(batch_size, device=x.device, dtype=x.dtype)
+            node_idx = 0
             cur_leaf = leaf_idx
-            
-            for depth in range(self.depth):
-                p = node_probs[node_idx].squeeze(1) 
-
-                if cur_leaf % 2 == 1: # right child
-                    path_probs[:, leaf_idx] *= p
-                else:  # left child
-                    path_probs[:, leaf_idx] *= (1-p)
-                
-                #to move down the tree
-                cur_leaf = cur_leaf // 2
-                node_idx = 2 * node_idx + 1 # to descend
-            
+            for level in range(self.depth):
+                p = node_probs[node_idx].squeeze(1)
+                left_leaves = 1 << (self.depth - 1 - level)
+                if cur_leaf < left_leaves:
+                    col = col * (1.0 - p)
+                    node_idx = 2 * node_idx + 1
+                else:
+                    col = col * p
+                    cur_leaf -= left_leaves
+                    node_idx = 2 * node_idx + 2
+            leaf_cols.append(col)
+        path_probs = torch.stack(leaf_cols, dim=1)
         # weighted sum over leaves
         h = torch.matmul(path_probs, self.leaf_nodes)
         
-        return h.squeeze(1)
+        return h.squeeze(1), path_probs, node_outputs, node_reach
                     
     def predict(self, x):
         with torch.no_grad():  # no gradients needed for inference
-            h = self.forward(x)
+            h,_,_,_ = self.forward(x)
             return torch.sign(h)  # maps to {-1, +1}
