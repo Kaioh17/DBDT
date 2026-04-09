@@ -34,9 +34,8 @@ class SDT(nn.Module):
                                                         nn.Sigmoid()
                                                         ) for _ in range(self.num_inner_nodes)])
         # since the leaf nodes are just learned parameters we write does using `nn.parameters`
-        self.leaf_nodes = nn.Parameter(
-            torch.randn(self.num_leaves, 1)
-            )
+        # Small init keeps early ensemble margin small so exp(-y*H) in DBDT does not explode.
+        self.leaf_nodes = nn.Parameter(torch.randn(self.num_leaves, 1) * 0.1)
     def forward(self, x):
         batch_size = x.size(0)
         

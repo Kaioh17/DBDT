@@ -3,6 +3,7 @@
 import kagglehub
 from kagglehub import KaggleDatasetAdapter
 import numpy as np
+from hmeasure import h_score
 # scikit learn imports
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
@@ -12,6 +13,9 @@ from imblearn.over_sampling import SMOTE
 # matplot lib
 import matplotlib.pyplot as plt
 import torch 
+from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score, confusion_matrix, roc_auc_score, ConfusionMatrixDisplay
+from sklearn.metrics import roc_curve
+import matplotlib.pyplot as plt
 # Set the path to the file you'd like to load
 file_path = "creditcard.csv"
 
@@ -119,11 +123,113 @@ def plot_tsne(X, y, title="t-SNE Visualization", sample_size=5000, random_state=
     plt.tight_layout()
     plt.show()
     
-def torch_cast(X_train, X_test, y_train, y_test): 
+def torch_cast(X_train, X_test, y_train, y_test, device): 
     X_train_t = torch.tensor(X_train.values, dtype=torch.float32) # .values because it's a DataFrame
     X_test_t = torch.tensor(X_test.values, dtype=torch.float32)
     y_train_t = torch.tensor(y_train, dtype=torch.float32)
     y_test_t = torch.tensor(y_test, dtype=torch.float32)
     
     
-    return X_train_t, X_test_t, y_train_t, y_test_t
+    return X_train_t.to(device), X_test_t.to(device), y_train_t.to(device), y_test_t.to(device)
+def evaluate(model, X, y):
+    # get predictions and raw scores
+    preds = model.predict(X).cpu().numpy()        # {-1, 1}
+    
+    with torch.no_grad():
+        H = torch.zeros(X.shape[0]).to(X.device)
+        for tree in model.trees:
+            ht_out, _, _ = tree.forward(X)
+            H = H + ht_out
+    scores = H.cpu().numpy()                      # raw scores for AUC
+    y_np = y.cpu().numpy()
+
+    # convert {-1,1} to {0,1} for sklearn
+    y_bin = ((y_np + 1) / 2).astype(int)
+    p_bin = ((preds + 1) / 2).astype(int)
+
+    # metrics
+    auc    = roc_auc_score(y_bin, scores)
+    f1     = f1_score(y_bin, p_bin)
+    prec   = precision_score(y_bin, p_bin)
+    rec    = recall_score(y_bin, p_bin)
+    cm     = confusion_matrix(y_bin, p_bin)
+
+    # h-measure
+    from sklearn.metrics import roc_curve
+    fpr, tpr, _ = roc_curve(y_bin, scores)
+
+    print(f"AUC:       {auc:.4f}")
+    print(f"F1:        {f1:.4f}")
+    print(f"Precision: {prec:.4f}")
+    print(f"Recall:    {rec:.4f}")
+
+    # confusion matrix plot
+    disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=['Legit', 'Fraud'])
+    disp.plot(cmap='Blues')
+    plt.title("Confusion Matrix")
+    plt.show()
+
+    # ROC curve
+    plt.figure()
+    plt.plot(fpr, tpr, label=f'AUC = {auc:.4f}')
+    plt.plot([0,1],[0,1],'--', color='gray')
+    plt.xlabel('False Positive Rate')
+    plt.ylabel('True Positive Rate')
+    plt.title('ROC Curve')
+    plt.legend()
+    plt.show()
+
+    return {'auc': auc, 'f1': f1, 'precision': prec, 'recall': rec}
+  
+def evaluate_binary(y_true, y_pred, pos_label=-1):
+    """
+    y_true, y_pred: torch.Tensor or np.ndarray, values in {-1, +1}.
+    pos_label: label treated as the positive class (here fraud = -1).
+    """
+    if isinstance(y_true, torch.Tensor):
+        y_true = y_true.detach().cpu().numpy()
+    if isinstance(y_pred, torch.Tensor):
+        y_pred = y_pred.detach().cpu().numpy()
+    y_true = np.asarray(y_true).ravel()
+    y_pred = np.asarray(y_pred).ravel()
+
+    acc = accuracy_score(y_true, y_pred)
+    # binary metrics need an explicit positive label when it isn't 1
+    f1 = f1_score(y_true, y_pred, pos_label=pos_label, zero_division=0)
+    prec = precision_score(y_true, y_pred, pos_label=pos_label, zero_division=0)
+    rec = recall_score(y_true, y_pred, pos_label=pos_label, zero_division=0)
+    cm = confusion_matrix(y_true, y_pred, labels=[pos_label, -pos_label])
+    # auc_ = ()
+    auc    = roc_auc_score(y_true, y_pred )
+    
+    metrics = {
+        "accuracy": acc,
+        "f1": f1,
+        "precision": prec,
+        "recall": rec,
+        "confusion_matrix": cm,  # rows/cols: [pos_label, negative_label]
+    }
+    print(f"AUC:       {auc:.4f}")
+    print(f"F1:        {f1:.4f}")
+    print(f"Precision: {prec:.4f}")
+    print(f"Recall:    {rec:.4f}")
+    hm = h_score(y_true, y_pred)
+    print(f"H-measure: {hm:.4f}")
+  
+    fpr, tpr, _ = roc_curve(y_true, y_pred)
+    
+    disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=['Legit', 'Fraud'])
+    disp.plot(cmap='Blues')
+    plt.title("Confusion Matrix")
+    plt.show()
+    
+    plt.figure()
+    plt.plot(fpr, tpr, label=f'AUC = {auc:.4f}')
+    plt.plot([0,1],[0,1],'--', color='gray')
+    plt.xlabel('False Positive Rate')
+    plt.ylabel('True Positive Rate')
+    plt.title('ROC Curve')
+    plt.legend()
+    plt.show()
+    return 
+

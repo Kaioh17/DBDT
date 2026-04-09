@@ -2,6 +2,7 @@ import numpy as np
 import torch
 import torch.nn as nn 
 from .sdt import SDT
+from tqdm import tqdm
 """
 PSEUDO CODE - Algorithm 1 DBDT-SGD
 
@@ -29,14 +30,17 @@ Input: Training Set, number of SDTs: T, depth: d,
 Return: H(x) = Σ ht(x)
 """
 class DBDT_SGD:
-    def __init__(self, T, input_dim, depth, hidden_dim, lr):
+    def __init__(self, T, input_dim, depth, hidden_dim, lr, device, grad_clip_norm=1.0, exp_clip=20.0):
         self.T = T
-        self.trees = [SDT(input_dim, depth, hidden_dim) for _ in range(T)] #line 1-3
+        self.device = device
+        self.exp_clip = exp_clip
+        self.grad_clip_norm = grad_clip_norm
+        self.trees = [SDT(input_dim, depth, hidden_dim).to(device) for _ in range(T)] #line 1-3
         all_params = []
         for tree in self.trees:
             all_params += list(tree.parameters())
-            
-        
+        self._all_params = all_params
+
         self.optimizer = torch.optim.SGD(all_params, lr=lr)
         self.lamda1 = 0.1 # Ct
         self.lamda2 = 0.005 # Ωt
@@ -44,24 +48,31 @@ class DBDT_SGD:
         
     def fit(self, X, y, epochs, batch_size = 128):
         n = X.shape[0]
-        for i in range(epochs):
+        epoch_bar = tqdm(range(epochs), desc="Training DBDT")
+        for i in epoch_bar:
             perm = torch.randperm(n,  device=X.device)
             for start in range(0, n, batch_size):
                 idx = perm[start : start + batch_size]
                 X_batch = X[idx]
                 y_batch = y[idx]
-                l_exp = 0; H = torch.zeros(X_batch.shape[0], device=X.device, dtype=X_batch.dtype)
+                l_exp = 0; H = torch.zeros(X_batch.shape[0], device=X.device, dtype=X_batch.dtype).to(self.device)
                 for tree in self.trees:
                     ht_out, _, node_outputs, node_reach = tree.forward(X_batch)
-                    residuals = y_batch * torch.exp(-y_batch * H) #rᵢ = yᵢ · exp(-yᵢ · H(xᵢ))
+                    # Clamp exponent so exp(-y*H) cannot overflow (common with lr that is too large).
+                    exp_arg = torch.clamp(-y_batch * H, -self.exp_clip, self.exp_clip)
+                    residuals = y_batch * torch.exp(exp_arg)  # rᵢ = yᵢ · exp(-yᵢ · H(xᵢ))
                     H = H + ht_out # running some accross trees. 
                     Lt = torch.nn.functional.mse_loss(ht_out, residuals, reduction='sum') # local loss (Lt = Σ[ht(xi) - ri]²)
                     l_exp = l_exp + Lt + self._compute_regularizations(tree, node_outputs, node_reach)
                 # line 14 - Joint update of all tree params at once
                 self.optimizer.zero_grad()
                 l_exp.backward()
+                if self.grad_clip_norm is not None and self.grad_clip_norm > 0:
+                    torch.nn.utils.clip_grad_norm_(self._all_params, self.grad_clip_norm)
                 self.optimizer.step()
-        return H
+                
+                epoch_bar.set_postfix({'loss': f'{l_exp.item():.4f}'})
+        return self
     def _compute_regularizations(self, tree, node_outputs, node_reach_probs):
         """helper function to get the sum of the main regularizers in the paper (Ct + Ωt)
             Ct: controls regularization by encouraging balanced splits at each inner node
@@ -86,9 +97,9 @@ class DBDT_SGD:
         
     def predict(self, X):
         with torch.no_grad():
-            H = torch.zeros(X.shape[0])
+            H = torch.zeros(X.shape[0], device=X.device, dtype=X.dtype)
             for tree in self.trees:
                 ht_out, _, _, _ = tree.forward(X)
                 H = H + ht_out
             return torch.sign(H)
-        
+    
