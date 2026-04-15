@@ -124,13 +124,13 @@ def plot_tsne(X, y, title="t-SNE Visualization", sample_size=5000, random_state=
     plt.show()
     
 def torch_cast(X_train, X_test, y_train, y_test, device): 
-    X_train_t = torch.tensor(X_train.values, dtype=torch.float32) # .values because it's a DataFrame
-    X_test_t = torch.tensor(X_test.values, dtype=torch.float32)
-    y_train_t = torch.tensor(y_train, dtype=torch.float32)
-    y_test_t = torch.tensor(y_test, dtype=torch.float32)
+    X_train_t = torch.tensor(X_train.values, dtype=torch.float32).to(device) # .values because it's a DataFrame
+    X_test_t = torch.tensor(X_test.values, dtype=torch.float32).to(device)
+    y_train_t = torch.tensor(y_train, dtype=torch.float32).to(device)
+    y_test_t = torch.tensor(y_test, dtype=torch.float32).to(device)
     
     
-    return X_train_t.to(device), X_test_t.to(device), y_train_t.to(device), y_test_t.to(device)
+    return X_train_t, X_test_t, y_train_t, y_test_t
 def evaluate(model, X, y):
     # get predictions and raw scores
     preds = model.predict(X).cpu().numpy()        # {-1, 1}
@@ -231,5 +231,31 @@ def evaluate_binary(y_true, y_pred, pos_label=-1):
     plt.title('ROC Curve')
     plt.legend()
     plt.show()
-    return 
+    return metrics
 
+from collections import Counter
+
+def print_dataset_size_levels(
+    X_full, y_full,
+    X_subset, y_subset,
+    X_train, y_train,
+    X_val, y_val,
+    X_test, y_test,
+    X_train_iqr, y_train_iqr,
+    X_train_smote, y_train_smote
+):
+    print("=== Dataset Size Levels ===")
+    print(f"Full dataset          : X={len(X_full):,}, y={len(y_full):,} | class={dict(Counter(y_full))}")
+    print(f"Subset dataset        : X={len(X_subset):,}, y={len(y_subset):,} | class={dict(Counter(y_subset))}")
+    print(f"Train split           : X={len(X_train):,}, y={len(y_train):,} | class={dict(Counter(y_train))}")
+    print(f"Validation split      : X={len(X_val):,}, y={len(y_val):,} | class={dict(Counter(y_val))}")
+    print(f"Test split            : X={len(X_test):,}, y={len(y_test):,} | class={dict(Counter(y_test))}")
+    print(f"Train after IQR       : X={len(X_train_iqr):,}, y={len(y_train_iqr):,} | class={dict(Counter(y_train_iqr))}")
+    print(f"Train after SMOTE     : X={len(X_train_smote):,}, y={len(y_train_smote):,} | class={dict(Counter(y_train_smote))}")
+
+    growth = len(X_train_smote) / max(len(X_train_iqr), 1)
+    print(f"\nSMOTE growth factor   : {growth:.2f}x")
+
+# Example call with your existing variables:
+# (adjust X_full/y_full if you name them differently in your notebook)
+# 

@@ -30,7 +30,23 @@ Input: Training Set, number of SDTs: T, depth: d,
 Return: H(x) = Σ ht(x)
 """
 class DBDT_SGD:
+    """
+    Paper-aligned implementation of DBDT-SGD.
+        - Xavier init handled in SDT
+        - full-batch epoch updates (Algorithm 1 style)
+        - no exp clipping, no grad clipping
+    Args:
+        T (int): number of trees
+        input_dim (int): input dimension
+        depth (int): depth of the trees
+        hidden_dim (int): hidden dimension
+        lr (float): learning rate
+        device (torch.device): device to use
+        grad_clip_norm (float, optional): gradient clip norm. Defaults to 1.0.
+        exp_clip (float, optional): exp clip. Defaults to 20.0.
+    """
     def __init__(self, T, input_dim, depth, hidden_dim, lr, device, grad_clip_norm=1.0, exp_clip=20.0):
+        """T: number of trees"""
         self.T = T
         self.device = device
         self.exp_clip = exp_clip
@@ -46,7 +62,22 @@ class DBDT_SGD:
         self.lamda2 = 0.005 # Ωt
         
         
-    def fit(self, X, y, epochs, batch_size = 128):
+    def fit(self, X, y, epochs = 200, batch_size = 128):
+        """Built to mirror the paper's Algorithm 1. But with some optimizations. For example: 
+        - batching and shuffling the data.
+        - computing the regularizations in a more efficient way.
+
+        Args:
+            X (torch.Tensor): feature samples
+            y (torch.Tensor): predicted samples
+            epochs (int, optinal): number iterations. Defaults 200
+            batch_size (int, optional): Defaults to 128.
+
+        Returns:
+            self
+        """
+        X = X.to(self.device)
+        y = y.to(self.device)
         n = X.shape[0]
         epoch_bar = tqdm(range(epochs), desc="Training DBDT")
         for i in epoch_bar:
@@ -57,7 +88,7 @@ class DBDT_SGD:
                 y_batch = y[idx]
                 l_exp = 0; H = torch.zeros(X_batch.shape[0], device=X.device, dtype=X_batch.dtype).to(self.device)
                 for tree in self.trees:
-                    ht_out, _, node_outputs, node_reach = tree.forward(X_batch)
+                    ht_out, _, node_outputs, node_reach = tree.forward_soft(X_batch)
                     # Clamp exponent so exp(-y*H) cannot overflow (common with lr that is too large).
                     exp_arg = torch.clamp(-y_batch * H, -self.exp_clip, self.exp_clip)
                     residuals = y_batch * torch.exp(exp_arg)  # rᵢ = yᵢ · exp(-yᵢ · H(xᵢ))
@@ -76,30 +107,55 @@ class DBDT_SGD:
     def _compute_regularizations(self, tree, node_outputs, node_reach_probs):
         """helper function to get the sum of the main regularizers in the paper (Ct + Ωt)
             Ct: controls regularization by encouraging balanced splits at each inner node
-            alph_i [is the wighted average routing the probability at node i]
+            alpha_i [is the wighted average routing the probability at node i]
             
             Ωt:Controls overfitting by penalizing large weights in inner node MLPs.
         """
-        # path_probs shape: (batch_size, num_leaves)
-        # for each inner node i, sum the path probs of leaves under it
+         # alpha_i = sum_x pi_i(x)*d_i(x) / sum_x pi_i(x)
         denom = node_reach_probs.sum(dim=0) + 1e-8
         alpha_i = (node_reach_probs * node_outputs).sum(dim=0) / denom
         Ct = -self.lamda1 * (2 ** -tree.depth) *  (0.5 * torch.log(alpha_i +1e-8) + 
                                                    0.5 * torch.log(1- alpha_i + 1e-8)
                                                    ).sum()
-        Omega_t = 0
+                                                
+        Omega_t = torch.tensor(0.0, device=node_outputs.device, dtype=node_outputs.dtype)
+        # Omega_t = torch.tensor(0.0, device=self.device, dtype=self.device.dtype)
         for node in tree.inner_nodes:
             for param in node.parameters():
-                Omega_t = Omega_t + param.norm(2) ** 2
+                Omega_t = Omega_t + param.norm(2).pow(2)
         Omega_t = self.lamda2 * Omega_t 
         
         return Ct + Omega_t
         
-    def predict(self, X):
+
+    def predict_score(self, X, hard=False): # will try to optimize for better scores
+        """
+        Predict the score of the input X.
+        Args:
+            X (torch.Tensor): The input tensor.
+            hard (bool): Whether to use the hard or soft prediction. [use hard for testing]
+        Returns:
+            torch.Tensor: The predicted score.
+        """
+        X = X.to(self.device)
         with torch.no_grad():
             H = torch.zeros(X.shape[0], device=X.device, dtype=X.dtype)
+
             for tree in self.trees:
-                ht_out, _, _, _ = tree.forward(X)
+                if hard:
+                    ht_out, _, _, _ = tree.forward_hard(X)
+                else:
+                    ht_out, _, _, _ = tree.forward_soft(X)
                 H = H + ht_out
-            return torch.sign(H)
-    
+            
+            return H
+    def predict(self, X, hard=False): #as implemented in the paper
+        """
+        Predict the class of the input X.
+        Args:
+            X (torch.Tensor): The input tensor.
+            hard (bool): Whether to use the hard or soft prediction. [use hard for testing]
+        Returns:
+            torch.Tensor: The predicted class.
+        """
+        return torch.sign(self.predict_score(X, hard=hard))
