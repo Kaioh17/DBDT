@@ -255,7 +255,3 @@ def print_dataset_size_levels(
 
     growth = len(X_train_smote) / max(len(X_train_iqr), 1)
     print(f"\nSMOTE growth factor   : {growth:.2f}x")
-
-# Example call with your existing variables:
-# (adjust X_full/y_full if you name them differently in your notebook)
-# 
