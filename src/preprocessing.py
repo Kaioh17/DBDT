@@ -131,76 +131,35 @@ def torch_cast(X_train, X_test, y_train, y_test, device):
     
     
     return X_train_t, X_test_t, y_train_t, y_test_t
-def evaluate(model, X, y):
-    # get predictions and raw scores
-    preds = model.predict(X).cpu().numpy()        # {-1, 1}
-    
-    with torch.no_grad():
-        H = torch.zeros(X.shape[0]).to(X.device)
-        for tree in model.trees:
-            ht_out, _, _ = tree.forward(X)
-            H = H + ht_out
-    scores = H.cpu().numpy()                      # raw scores for AUC
-    y_np = y.cpu().numpy()
-
-    # convert {-1,1} to {0,1} for sklearn
-    y_bin = ((y_np + 1) / 2).astype(int)
-    p_bin = ((preds + 1) / 2).astype(int)
-
-    # metrics
-    auc    = roc_auc_score(y_bin, scores)
-    f1     = f1_score(y_bin, p_bin)
-    prec   = precision_score(y_bin, p_bin)
-    rec    = recall_score(y_bin, p_bin)
-    cm     = confusion_matrix(y_bin, p_bin)
-
-    # h-measure
-    from sklearn.metrics import roc_curve
-    fpr, tpr, _ = roc_curve(y_bin, scores)
-
-    print(f"AUC:       {auc:.4f}")
-    print(f"F1:        {f1:.4f}")
-    print(f"Precision: {prec:.4f}")
-    print(f"Recall:    {rec:.4f}")
-
-    # confusion matrix plot
-    disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=['Legit', 'Fraud'])
-    disp.plot(cmap='Blues')
-    plt.title("Confusion Matrix")
-    plt.show()
-
-    # ROC curve
-    plt.figure()
-    plt.plot(fpr, tpr, label=f'AUC = {auc:.4f}')
-    plt.plot([0,1],[0,1],'--', color='gray')
-    plt.xlabel('False Positive Rate')
-    plt.ylabel('True Positive Rate')
-    plt.title('ROC Curve')
-    plt.legend()
-    plt.show()
-
-    return {'auc': auc, 'f1': f1, 'precision': prec, 'recall': rec}
   
-def evaluate_binary(y_true, y_pred, pos_label=-1):
+def evaluate_binary(y_true, y_scores, pos_label=-1, threshold=0.5):
     """
     y_true, y_pred: torch.Tensor or np.ndarray, values in {-1, +1}.
     pos_label: label treated as the positive class (here fraud = -1).
     """
     if isinstance(y_true, torch.Tensor):
-        y_true = y_true.detach().cpu().numpy()
-    if isinstance(y_pred, torch.Tensor):
-        y_pred = y_pred.detach().cpu().numpy()
-    y_true = np.asarray(y_true).ravel()
-    y_pred = np.asarray(y_pred).ravel()
-
+        y_true = y_true.detach().cpu().numpy().ravel()
+    else:
+        y_true = np.asarray(y_true).ravel()
+    
+    if isinstance(y_scores, torch.Tensor):
+        y_scores = y_scores.detach().cpu().numpy().ravel()
+    # else:
+              
+    
+    # y_scores = np.asarray(y_scores).ravel()
+    y_bin = (y_true == pos_label).astype(int)
+    
+    fraud_scores = -y_scores
+    auc    = roc_auc_score(y_bin, fraud_scores)
+    
+    y_pred = np.where(fraud_scores >= threshold, pos_label, -pos_label)
     acc = accuracy_score(y_true, y_pred)
-    # binary metrics need an explicit positive label when it isn't 1
     f1 = f1_score(y_true, y_pred, pos_label=pos_label, zero_division=0)
     prec = precision_score(y_true, y_pred, pos_label=pos_label, zero_division=0)
     rec = recall_score(y_true, y_pred, pos_label=pos_label, zero_division=0)
     cm = confusion_matrix(y_true, y_pred, labels=[pos_label, -pos_label])
     # auc_ = ()
-    auc    = roc_auc_score(y_true, y_pred )
     
     metrics = {
         "accuracy": acc,
@@ -216,7 +175,7 @@ def evaluate_binary(y_true, y_pred, pos_label=-1):
     hm = h_score(y_true, y_pred)
     print(f"H-measure: {hm:.4f}")
   
-    fpr, tpr, _ = roc_curve(y_true, y_pred)
+    fpr, tpr, _ = roc_curve(y_bin, fraud_scores)
     
     disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=['Legit', 'Fraud'])
     disp.plot(cmap='Blues')
