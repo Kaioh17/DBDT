@@ -22,19 +22,19 @@ from src.preprocessing import (
 def main() -> None:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    # ---------- data ----------
+    # data
     X, y = load_data()
     X_train, X_test, y_train, y_test = test_train_split(X, y)
     X_train, X_valid, y_train, y_valid = train_valid_split(X_train, y_train)
     X_train, y_train = interquatile_range(X_train, y_train)
     X_train, y_train = apply_smote(X_train, y_train)
 
-    # ---------- baselines ----------
+    # baselines 
     baseline_models = get_baseline_models(random_state=42)
     baseline_summary, _ = run_stratified_10fold_cv(baseline_models, X_train, y_train)
     print("\nBaseline CV summary:\n", baseline_summary)
 
-    # ---------- DBDT-Com ----------
+    # DBDT-Com
     Xtr_t, Xte_t, ytr_t, yte_t = torch_cast(X_train, X_test, y_train, y_test, device)
 
     model = DBDT_SGD(
@@ -55,7 +55,7 @@ def main() -> None:
 
     trainer.fit(Xtr_t, ytr_t, epochs=20)
 
-    # IMPORTANT:
+   
     # Model learns fraud=-1, legit=+1.
     # So raw scores are LOWER for fraud.
     raw_scores = trainer.predict_scores(Xte_t)
