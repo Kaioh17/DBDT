@@ -1,3 +1,5 @@
+## MUBARAQ ##
+
 # Install dependencies as needed:
 # pip install kagglehub[pandas-datasets]
 import kagglehub
@@ -132,7 +134,7 @@ def torch_cast(X_train, X_test, y_train, y_test, device):
     
     return X_train_t, X_test_t, y_train_t, y_test_t
   
-def evaluate_binary(y_true, y_scores, pos_label=-1, threshold=0.5):
+def evaluate_binary(y_true, y_scores, pos_label=-1, threshold=0.5, print_: bool = True):
     """
     y_true, y_pred: torch.Tensor or np.ndarray, values in {-1, +1}.
     pos_label: label treated as the positive class (here fraud = -1).
@@ -168,30 +170,31 @@ def evaluate_binary(y_true, y_scores, pos_label=-1, threshold=0.5):
         "recall": rec,
         "confusion_matrix": cm,  # rows/cols: [pos_label, negative_label]
     }
-    print(f"AUC:       {auc:.4f}")
-    print(f"F1:        {f1:.4f}")
-    print(f"Precision: {prec:.4f}")
-    print(f"Recall:    {rec:.4f}")
     hm = h_score(y_true, y_pred)
-    print(f"H-measure: {hm:.4f}")
-  
-    fpr, tpr, _ = roc_curve(y_bin, fraud_scores)
+    if print_:
+        print(f"no. of samples {len(y_true)} || {dict(Counter(y_true))}")
+        print(f"AUC:       {auc:.4f}")
+        print(f"F1:        {f1:.4f}")
+        print(f"Precision: {prec:.4f}")
+        print(f"Recall:    {rec:.4f}")
+        print(f"H-measure: {hm:.4f}")
     
-    disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=['Legit', 'Fraud'])
-    disp.plot(cmap='Blues')
-    plt.title("Confusion Matrix")
-    plt.show()
-    
-    plt.figure()
-    plt.plot(fpr, tpr, label=f'AUC = {auc:.4f}')
-    plt.plot([0,1],[0,1],'--', color='gray')
-    plt.xlabel('False Positive Rate')
-    plt.ylabel('True Positive Rate')
-    plt.title('ROC Curve')
-    plt.legend()
-    plt.show()
+        fpr, tpr, _ = roc_curve(y_bin, fraud_scores)
+        
+        disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=['Fraud', 'Legit'])
+        disp.plot(cmap='Blues')
+        plt.title("Confusion Matrix")
+        plt.show()
+        
+        plt.figure()
+        plt.plot(fpr, tpr, label=f'AUC = {auc:.4f}')
+        plt.plot([0,1],[0,1],'--', color='gray')
+        plt.xlabel('False Positive Rate')
+        plt.ylabel('True Positive Rate')
+        plt.title('ROC Curve')
+        plt.legend()
+        plt.show()
     return metrics
-
 from collections import Counter
 
 def print_dataset_size_levels(
