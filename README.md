@@ -8,7 +8,8 @@ This repository contains a from-scratch implementation of key components from:
 The implementation focuses on fraud detection with highly imbalanced data using:
 - Soft Decision Trees (SDT)
 - Deep Boosting Decision Trees with SGD-style optimization (DBDT-SGD)
-- Imbalance handling through preprocessing and evaluation strategy
+- Prototype DBDT-Com-style training scaffold for exploratory comparison
+- Imbalance-aware preprocessing and evaluation strategy
 
 ---
 
@@ -51,6 +52,25 @@ Reproduce and study the DBDT method for credit card fraud detection while preser
   - local + global objective accumulation,
   - regularization terms.
 
+- `src/pdsca.py`  
+  Experimental DBDT-Com trainer scaffold:
+  - ensemble score aggregation,
+  - minibatch training wrapper,
+  - parameter updates and test-time scoring.
+  > Note: this is a simplified prototype and **not** a full Algorithm-2 (PDSCA) implementation from the paper.
+
+- `src/baselines.py`  
+  Baseline model definitions and unified score extraction:
+  - logistic regression,
+  - random forest,
+  - MLP,
+  - optional XGBoost / LightGBM.
+
+- `src/evaluation.py`  
+  Metric and validation utilities:
+  - stratified 10-fold CV for baseline comparisons,
+  - AUC / H-measure / F1 / precision / recall summaries.
+
 ---
 
 ## Environment Setup
@@ -72,7 +92,9 @@ If running on GPU, install a CUDA-compatible PyTorch build matching your system.
 1. Open `main.ipynb`.
 2. Run cells top to bottom.
 3. Confirm dataset loads successfully from Kaggle.
-4. Train `DBDT_SGD` and evaluate with configured metrics/plots.
+4. Train and evaluate `DBDT_SGD` (primary recreated pipeline).
+5. Run exploratory `DBDT-Com` prototype cells if needed.
+6. Run baseline CV summary for contextual comparison.
 
 ---
 
@@ -88,6 +110,10 @@ To keep experiments feasible and reproducible, this project supports using a **s
 
 This is an intentional experimental constraint and should be documented in report/presentation methodology.
 
+The paper's reported setup uses larger dedicated hardware and full-data cross-validation. In this repository:
+- DBDT experiments are typically run with a stratified holdout protocol due to compute limits.
+- Baseline models are compared using stratified 10-fold CV.
+
 ---
 
 ## Current Pipeline Summary
@@ -101,6 +127,7 @@ This is an intentional experimental constraint and should be documented in repor
 7. Train SDT/DBDT-SGD
 8. Tune decision threshold on validation set
 9. Evaluate on test set with metrics and plots
+10. (Optional) run DBDT-Com prototype and baseline CV for comparison
 
 ---
 
