@@ -195,7 +195,41 @@ def evaluate_binary(y_true, y_scores, pos_label=-1, threshold=0.5, print_: bool 
         plt.legend()
         plt.show()
     return metrics
+def precision_recall_curve(X, y, model):
+    
+    from sklearn.metrics import precision_recall_curve, average_precision_score
+
+    scores = model.predict_score(X)
+
+    if hasattr(scores, "detach"):
+        scores = scores.detach().cpu().numpy().ravel()
+    else:
+        scores = np.asarray(scores).ravel()
+    if hasattr(y, "detach"):
+        y_true = y.detach().cpu().numpy().ravel()
+    else:
+        y_true = np.asarray(y).ravel()
+
+    y_true_bin = (y_true == -1).astype(int)
+
+    fraud_scores = -scores
+
+    precision, recall, pr_thresholds = precision_recall_curve(y_true_bin, fraud_scores)
+    
+    # print(precision, recall
+    ap = average_precision_score(y_true_bin, fraud_scores)
+
+    plt.figure(figsize=(6, 5))
+    plt.plot(recall, precision, label=f"DBDT-SGD (AP = {ap:.4f})")
+    plt.xlabel("Recall")
+    plt.ylabel("Precision")
+    plt.title("Precision-Recall Curve (DBDT-SGD)")
+    plt.grid(True, alpha=0.3)
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
 from collections import Counter
+
 
 def print_dataset_size_levels(
     X_full, y_full,
