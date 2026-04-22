@@ -1,0 +1,2 @@
+No saved model complete run is in the main.ipynb.
+See requirements.txt for dependecies if you want to train from scratch. 
